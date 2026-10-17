@@ -1,0 +1,56 @@
+name: Build macOS (Unsigned)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+
+concurrency:
+  group: macos-unsigned-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Report Xcode
+        run: xcodebuild -version
+
+      - name: Build for Mac Catalyst without signing
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project HomeAssistant.xcodeproj \
+            -scheme App-Debug \
+            -configuration Debug \
+            -destination 'generic/platform=macOS,variant=Mac Catalyst' \
+            -derivedDataPath "$RUNNER_TEMP/HomeAssistantMacBuild" \
+            -quiet \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM= \
+            DISABLE_SWIFTLINT=1 \
+            build
+
+      - name: Package unsigned Mac app
+        run: |
+          app="$RUNNER_TEMP/HomeAssistantMacBuild/Build/Products/Debug-maccatalyst/Home Assistant.app"
+          test -d "$app"
+          ditto -c -k --keepParent "$app" "$RUNNER_TEMP/home-assistant-mac-unsigned.zip"
+
+      - name: Upload unsigned Mac app
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: home-assistant-macos-unsigned
+          path: ${{ runner.temp }}/home-assistant-mac-unsigned.zip
+          if-no-files-found: error
